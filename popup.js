@@ -9,7 +9,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let settings = {
     enableAutoBlock: true,
     alertLevel: 'all', // 'high', 'medium', 'low', 'all'
-    enableContext: true
+    enableContext: true,
+    domainMode: 'include',
+    includeDomains: ['wiki.icbc'],
+    excludeDomains: ['example.com', 'test.com']
   };
 
   // 加载已保存的设置
@@ -17,6 +20,10 @@ document.addEventListener('DOMContentLoaded', () => {
     settings = { ...settings, ...savedSettings };
     document.getElementById('enableAutoBlock').checked = settings.enableAutoBlock;
     document.getElementById('enableContext').checked = settings.enableContext;
+    document.getElementById('domainMode').value = settings.domainMode;
+    
+    // 更新域名列表UI
+    renderDomainList();
     
     // 更新告警级别UI
     updateAlertLevelUI(settings.alertLevel);
@@ -40,7 +47,6 @@ document.addEventListener('DOMContentLoaded', () => {
     notification.textContent = message;
     notificationContainer.innerHTML = '';
     notificationContainer.appendChild(notification);
-    
     setTimeout(() => {
       if (notificationContainer.contains(notification)) {
         notificationContainer.removeChild(notification);
@@ -64,12 +70,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // 显示检测结果
   function displayResults(results, type = 'page') {
     resultDiv.innerHTML = '';
-    
     if (!results || Object.keys(results).length === 0) {
       resultDiv.innerHTML = `<p class="notification success">未检测到敏感信息 ✅</p>`;
       return;
     }
-    
+
     // 统计风险级别
     let highRiskCount = 0, mediumRiskCount = 0, lowRiskCount = 0, infoCount = 0;
     
@@ -80,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
       low: [],
       info: []
     };
-    
+
     Object.entries(results).forEach(([category, matches]) => {
       // 跳过空结果
       if (!matches || matches.length === 0) return;
@@ -99,7 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // 添加到对应风险组
       riskGroups[riskLevel].push({ category, matches });
     });
-    
+
     // 添加风险统计
     const statsDiv = document.createElement('div');
     statsDiv.className = 'stats';
@@ -110,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <span>🔵 信息: ${infoCount}</span>
     `;
     resultDiv.appendChild(statsDiv);
-    
+
     // 按风险级别顺序显示结果
     ['high', 'medium', 'low', 'info'].forEach(riskLevel => {
       if (riskGroups[riskLevel].length > 0) {
@@ -120,20 +125,18 @@ document.addEventListener('DOMContentLoaded', () => {
           categoryDiv.className = 'findings-container';
           categoryDiv.style.borderLeftColor = getRiskColor(category);
           
-          const riskClass = riskLevel === 'high' ? 'risk-high' : 
-                           riskLevel === 'medium' ? 'risk-medium' : 
-                           riskLevel === 'low' ? 'risk-low' : 'risk-info';
-                           
-          const riskBadgeClass = riskLevel === 'high' ? 'high' : 
-                               riskLevel === 'medium' ? 'medium' : 
-                               riskLevel === 'low' ? 'low' : 'info';
+          const riskClass = riskLevel === 'high' ? 'risk-high' :
+                            riskLevel === 'medium' ? 'risk-medium' :
+                            riskLevel === 'low' ? 'risk-low' : 'risk-info';
+          const riskBadgeClass = riskLevel === 'high' ? 'high' :
+                                riskLevel === 'medium' ? 'medium' :
+                                riskLevel === 'low' ? 'low' : 'info';
           
           categoryDiv.innerHTML = `<div><span class="${riskClass}">${category}</span><span class="risk-badge ${riskBadgeClass}">${riskLevel}</span></div>`;
           
           matches.forEach(match => {
             const matchDiv = document.createElement('div');
             matchDiv.className = 'match-item';
-            
             let matchContent = `<span class="${riskClass}">${escapeHtml(match.value)}</span>`;
             
             // 添加上下文
@@ -142,12 +145,10 @@ document.addEventListener('DOMContentLoaded', () => {
               const endIdx = Math.min(match.context.length, match.index + match.value.length + 30);
               const highlightStart = match.index - startIdx;
               const highlightEnd = highlightStart + match.value.length;
-              
               let contextText = escapeHtml(match.context.substring(startIdx, endIdx));
-              contextText = contextText.substring(0, highlightStart) + 
-                            `<span class="${riskClass}">${contextText.substring(highlightStart, highlightEnd)}</span>` + 
-                            contextText.substring(highlightEnd);
-              
+              contextText = contextText.substring(0, highlightStart) +
+                `<span class="${riskClass}">${contextText.substring(highlightStart, highlightEnd)}</span>` +
+                contextText.substring(highlightEnd);
               matchContent += `<div class="match-context">${contextText}</div>`;
             }
             
@@ -156,12 +157,11 @@ document.addEventListener('DOMContentLoaded', () => {
             matchDiv.innerHTML = matchContent;
             categoryDiv.appendChild(matchDiv);
           });
-          
           resultDiv.appendChild(categoryDiv);
         });
       }
     });
-    
+
     // 添加复制功能
     document.querySelectorAll('.copy-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -175,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       });
     });
-    
+
     // 显示警告
     if (highRiskCount > 0) {
       showNotification(`检测到 ${highRiskCount} 个高风险敏感信息！建议谨慎处理此页面。`, 'error');
@@ -187,7 +187,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // HTML转义
   function escapeHtml(str) {
     if (typeof str !== 'string') return str;
-    return str.replace(/[&<>"']/g, m => 
+    return str.replace(/[&<>"']/g, m =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])
     );
   }
@@ -199,11 +199,9 @@ document.addEventListener('DOMContentLoaded', () => {
       'Shiro特征', '数据库连接', '身份证', 'JWT Token', 'AWS Key', 'Google API',
       'GitHub Token', 'RSA私钥', 'SSH私钥', 'PEM私钥', 'flag!!!', 'ak sk', '云安全'
     ];
-    
     const mediumRiskCategories = [
       '明文ID参数', 'JSON-ID参数', '密码字段', '内网IP', '敏感管理路径'
     ];
-    
     const lowRiskCategories = [
       'Swagger UI', 'URL跳转参数', '账号字段', '加密算法', '车牌号'
     ];
@@ -217,8 +215,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // 获取风险颜色
   function getRiskColor(category) {
     const riskLevel = getRiskLevel(category);
-    return riskLevel === 'high' ? '#e74c3c' : 
-           riskLevel === 'medium' ? '#e67e22' : 
+    return riskLevel === 'high' ? '#e74c3c' :
+           riskLevel === 'medium' ? '#e67e22' :
            riskLevel === 'low' ? '#2ecc71' : '#3498db';
   }
 
@@ -248,7 +246,6 @@ document.addEventListener('DOMContentLoaded', () => {
       'low': 'low',
       'all': 'all'
     };
-    
     currentAlertLevelEl.textContent = levelText[level] || '中及以上风险';
     currentAlertLevelEl.className = `current-alert-level ${levelClasses[level] || 'medium'}`;
   }
@@ -266,6 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const lowRiskCategories = [
       'Swagger UI', 'URL跳转参数', '账号字段', '加密算法', '车牌号'
     ];
+    
     if (highRiskCategories.includes(category)) return 'high';
     if (mediumRiskCategories.includes(category)) return 'medium';
     if (lowRiskCategories.includes(category)) return 'low';
@@ -338,14 +336,17 @@ document.addEventListener('DOMContentLoaded', () => {
       let match;
       while ((match = pattern.exec(content)) !== null) {
         if (matches.length >= 10) break;
+        
         let fullMatch = match[0];
         if (match.length > 1 && match[1]) fullMatch = match[1];
+        
         let context = '';
         if (settings.enableContext) {
           const startIdx = Math.max(0, match.index - 100);
           const endIdx = Math.min(content.length, match.index + match[0].length + 100);
           context = content.substring(startIdx, endIdx);
         }
+        
         if (!matches.some(m => m.value === fullMatch)) {
           matches.push({
             value: fullMatch,
@@ -354,15 +355,16 @@ document.addEventListener('DOMContentLoaded', () => {
           });
         }
       }
+      
       if (matches.length > 0) results[category] = matches;
     });
+
     return results;
   }
 
   // ========== 页面检测（修复版） ==========
   document.getElementById('extract').addEventListener('click', () => {
     showLoader('正在分析页面内容...');
-    
     checkValidTab((tab) => {
       // 注入脚本获取页面内容并分析
       chrome.scripting.executeScript(
@@ -388,7 +390,6 @@ document.addEventListener('DOMContentLoaded', () => {
           
           const pageContent = injectionResults[0].result;
           const results = analyzeContent(pageContent, settings);
-          
           hideLoader();
           displayResults(results, 'page');
         }
@@ -399,7 +400,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // ========== 深度扫描JS文件 ==========
   document.getElementById('deepScan').addEventListener('click', () => {
     showLoader('正在扫描JS文件...');
-    
     checkValidTab((tab) => {
       // 获取所有JS文件URL
       chrome.scripting.executeScript(
@@ -431,7 +431,6 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           
           showLoader(`正在分析 ${jsFiles.length} 个JS文件...`);
-          
           let completed = 0;
           const allResults = {};
           
@@ -454,7 +453,6 @@ document.addEventListener('DOMContentLoaded', () => {
               .finally(() => {
                 completed++;
                 loadingText.textContent = `已分析 ${completed}/${jsFiles.length} 个文件`;
-                
                 if (completed === jsFiles.length) {
                   hideLoader();
                   displayDeepScanResults(allResults);
@@ -469,14 +467,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // 显示深度扫描结果
   function displayDeepScanResults(allResults) {
     resultDiv.innerHTML = '';
-    
     if (Object.keys(allResults).length === 0) {
       resultDiv.innerHTML = `<p class="notification success">未在JS文件中检测到敏感信息 ✅</p>`;
       return;
     }
     
     let totalFindings = 0;
-    
     Object.entries(allResults).forEach(([url, results]) => {
       const fileDiv = document.createElement('div');
       fileDiv.className = 'js-file';
@@ -489,7 +485,6 @@ document.addEventListener('DOMContentLoaded', () => {
       totalFindings += fileFindings;
       
       const fileName = url.split('/').pop() || url;
-      
       fileDiv.innerHTML = `
         <div class="file-header">
           <span title="${escapeHtml(url)}" class="truncated">${escapeHtml(fileName)}</span>
@@ -509,17 +504,88 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 添加总计
     if (totalFindings > 0) {
-      showNotification(`在JS文件中总共检测到 ${totalFindings} 个敏感信息`, 
+      showNotification(`在JS文件中总共检测到 ${totalFindings} 个敏感信息`,
         totalFindings > 10 ? 'error' : totalFindings > 5 ? 'warning' : 'info');
     }
   }
+
+  // ========== 域名管理功能 ==========
+  // 渲染域名列表
+  function renderDomainList() {
+    const container = document.getElementById('domainListContainer');
+    container.innerHTML = '';
+    
+    const domains = settings.domainMode === 'include' ? 
+      settings.includeDomains : settings.excludeDomains;
+    
+    if (domains.length === 0) {
+      container.innerHTML = '<p style="color: #6c757d; text-align: center;">暂无域名</p>';
+      return;
+    }
+    
+    domains.forEach((domain, index) => {
+      const domainItem = document.createElement('div');
+      domainItem.style.display = 'flex';
+      domainItem.style.alignItems = 'center';
+      domainItem.style.padding = '5px 0';
+      domainItem.style.borderBottom = '1px solid #eee';
+      
+      domainItem.innerHTML = `
+        <span style="flex: 1; padding-left: 5px;">${escapeHtml(domain)}</span>
+        <button class="remove-domain" data-index="${index}" style="background: #e74c3c; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 11px; cursor: pointer;">移除</button>
+      `;
+      
+      container.appendChild(domainItem);
+    });
+    
+    // 添加移除按钮事件
+    document.querySelectorAll('.remove-domain').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const index = parseInt(this.getAttribute('data-index'));
+        if (settings.domainMode === 'include') {
+          settings.includeDomains.splice(index, 1);
+        } else {
+          settings.excludeDomains.splice(index, 1);
+        }
+        renderDomainList();
+      });
+    });
+  }
+
+  // 添加新域名
+  document.getElementById('addDomain').addEventListener('click', function() {
+    const domainMode = document.getElementById('domainMode').value;
+    const domains = domainMode === 'include' ? 
+      settings.includeDomains : settings.excludeDomains;
+    
+    // 使用prompt简单实现，实际应用中可以用更好的输入方式
+    const newDomain = prompt('请输入域名(例如: wiki.icbc.com 或 *.icbc.com):');
+    if (newDomain && newDomain.trim() !== '') {
+      const cleanDomain = newDomain.trim().toLowerCase()
+        .replace(/^https?:\/\//, '')
+        .replace(/\/.*$/, '')
+        .replace(/^\*\.?/, '');
+        
+      if (!domains.includes(cleanDomain) && cleanDomain !== '') {
+        domains.push(cleanDomain);
+        renderDomainList();
+      } else if (cleanDomain !== '') {
+        showNotification('该域名已存在', 'warning');
+      }
+    }
+  });
+
+  // 切换域名模式
+  document.getElementById('domainMode').addEventListener('change', function() {
+    settings.domainMode = this.value;
+    renderDomainList();
+  });
 
   // 切换设置面板
   document.getElementById('toggleSettings').addEventListener('click', (e) => {
     e.preventDefault();
     const settingsPanel = document.getElementById('settingsPanel');
     const toggleBtn = e.target;
-    
     if (settingsPanel.style.display === 'none' || settingsPanel.style.display === '') {
       settingsPanel.style.display = 'block';
       toggleBtn.textContent = '隐藏设置 ▲';
@@ -537,7 +603,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       this.classList.add('selected');
       settings.alertLevel = this.dataset.level;
-      
       // 更新描述
       document.querySelector('.high-desc').style.display = settings.alertLevel === 'high' ? 'inline' : 'none';
       document.querySelector('.medium-desc').style.display = settings.alertLevel === 'medium' ? 'inline' : 'none';
@@ -550,18 +615,24 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('saveSettings').addEventListener('click', () => {
     settings.enableAutoBlock = document.getElementById('enableAutoBlock').checked;
     settings.enableContext = document.getElementById('enableContext').checked;
+    settings.domainMode = document.getElementById('domainMode').value;
     
     chrome.storage.sync.set(settings, () => {
       // 通知内容脚本更新设置
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (tabs[0]) {
           chrome.tabs.sendMessage(tabs[0].id, { action: "updateSettings", settings: settings });
+          chrome.tabs.sendMessage(tabs[0].id, { 
+            action: "updateDomainSettings",
+            domainMode: settings.domainMode,
+            includeDomains: settings.includeDomains,
+            excludeDomains: settings.excludeDomains
+          });
         }
       });
       
       // 更新标题显示
       updateAlertLevelUI(settings.alertLevel);
-      
       showNotification('设置已保存', 'success');
     });
   });

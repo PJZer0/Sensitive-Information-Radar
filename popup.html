@@ -1,386 +1,387 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <style>
-    body {
-      width: 450px;
-      padding: 15px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      font-size: 13px;
-      color: #333;
-      margin: 0;
-    }
-    h1 {
-      font-size: 16px;
-      margin: 0 0 15px 0;
-      color: #2c3e50;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .header-icon {
-      width: 20px;
-      height: 20px;
-      background-color: #3498db;
-      border-radius: 50%;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-weight: bold;
-      font-size: 12px;
-    }
-    .controls {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 15px;
-    }
-    button {
-      flex: 1;
-      padding: 8px 12px;
-      border: none;
-      border-radius: 4px;
-      background: #3498db;
-      color: white;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    button:hover {
-      background: #2980b9;
-    }
-    button:active {
-      transform: translateY(1px);
-    }
-    button#deepScan {
-      background: #9b59b6;
-    }
-    button#deepScan:hover {
-      background: #8e44ad;
-    }
-    #result {
-      max-height: 500px;
-      overflow-y: auto;
-      border: 1px solid #eee;
-      border-radius: 4px;
-      padding: 10px;
-      background: #f9f9f9;
-      font-family: monospace;
-      font-size: 12px;
-    }
-    .risk-high { color: #e74c3c; font-weight: bold; }
-    .risk-medium { color: #e67e22; font-weight: bold; }
-    .risk-low { color: #2ecc71; font-weight: bold; }
-    .risk-info { color: #3498db; font-weight: bold; }
-    
-    .findings-container {
-      margin-bottom: 15px;
-      border-left: 3px solid #3498db;
-      padding-left: 10px;
-    }
-    
-    .js-file {
-      margin: 15px 0;
-      padding: 10px;
-      background: white;
-      border-radius: 4px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    
-    .file-header {
-      font-weight: bold;
-      margin-bottom: 8px;
-      color: #2c3e50;
-      display: flex;
-      justify-content: space-between;
-    }
-    
-    .match-item {
-      margin: 5px 0;
-      padding-left: 15px;
-    }
-    
-    .match-context {
-      background: #f1f1f1;
-      padding: 5px 10px;
-      border-radius: 3px;
-      margin: 3px 0;
-      font-family: monospace;
-      font-size: 12px;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-    
-    .stats {
-      display: flex;
-      justify-content: space-between;
-      margin: 10px 0;
-      font-size: 12px;
-      color: #7f8c8d;
-    }
-    
-    .loader {
-      display: none;
-      text-align: center;
-      margin: 10px 0;
-    }
-    
-    .spinner {
-      border: 2px solid #f3f3f3;
-      border-top: 2px solid #3498db;
-      border-radius: 50%;
-      width: 20px;
-      height: 20px;
-      animation: spin 1s linear infinite;
-      margin: 0 auto;
-    }
-    
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    
-    .settings-toggle {
-      color: #3498db;
-      text-decoration: none;
-      font-size: 12px;
-      margin-top: 5px;
-      display: inline-block;
-    }
-    
-    .settings {
-      margin-top: 10px;
-      padding: 15px;
-      background: #f8f9fa;
-      border-radius: 4px;
-      display: none;
-      border: 1px solid #e9ecef;
-    }
-    
-    .setting-item {
-      margin: 8px 0;
-    }
-    
-    .notification {
-      padding: 8px;
-      border-radius: 4px;
-      margin: 10px 0;
-      font-size: 12px;
-    }
-    .notification.success {
-      background: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
-    }
-    .notification.warning {
-      background: #fff3cd;
-      color: #856404;
-      border: 1px solid #ffeaa7;
-    }
-    .notification.error {
-      background: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
-    }
-    .risk-badge {
-      display: inline-block;
-      padding: 2px 6px;
-      border-radius: 10px;
-      font-size: 10px;
-      font-weight: bold;
-      text-transform: uppercase;
-      margin-left: 8px;
-    }
-    .risk-badge.high { background: #ffcccc; color: #cc0000; }
-    .risk-badge.medium { background: #ffebcc; color: #e65c00; }
-    .risk-badge.low { background: #ccffcc; color: #006600; }
-    .risk-badge.info { background: #cce6ff; color: #003399; }
-    .copy-btn {
-      background: #eee;
-      border: 1px solid #ddd;
-      color: #555;
-      padding: 2px 6px;
-      border-radius: 3px;
-      cursor: pointer;
-      font-size: 11px;
-      margin-left: 8px;
-    }
-    .copy-btn:hover {
-      background: #ddd;
-    }
-    .truncated {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 100%;
-    }
-    .toggle-container {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin: 5px 0;
-    }
-    .toggle-switch {
-      position: relative;
-      display: inline-block;
-      width: 40px;
-      height: 20px;
-    }
-    .toggle-switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-    .slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: #ccc;
-      transition: .4s;
-      border-radius: 20px;
-    }
-    .slider:before {
-      position: absolute;
-      content: "";
-      height: 16px;
-      width: 16px;
-      left: 2px;
-      bottom: 2px;
-      background-color: white;
-      transition: .4s;
-      border-radius: 50%;
-    }
-    input:checked + .slider {
-      background-color: #3498db;
-    }
-    input:checked + .slider:before {
-      transform: translateX(20px);
-    }
-    
-    /* 告警级别选择器 */
-    .alert-level-selector {
-      display: flex;
-      gap: 5px;
-      margin-top: 5px;
-    }
-    .alert-level-option {
-      flex: 1;
-      padding: 6px 0;
-      text-align: center;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-      transition: all 0.2s;
-    }
-    .alert-level-option:hover {
-      background: #f8f9fa;
-    }
-    .alert-level-option.selected {
-      border-color: #3498db;
-      background: #e3f2fd;
-      font-weight: bold;
-    }
-    .alert-level-high { border-left: 3px solid #e74c3c; }
-    .alert-level-medium { border-left: 3px solid #e67e22; }
-    .alert-level-low { border-left: 3px solid #2ecc71; }
-    .alert-level-all { border-left: 3px solid #3498db; }
-    
-    .alert-level-desc {
-      font-size: 11px;
-      color: #6c757d;
-      margin-top: 3px;
-      padding-left: 5px;
-    }
-    
-    .current-alert-level {
-      display: inline-block;
-      margin-left: 8px;
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-size: 11px;
-      font-weight: bold;
-    }
-    .current-alert-level.high { background: #ffebee; color: #c62828; }
-    .current-alert-level.medium { background: #fff8e1; color: #e65100; }
-    .current-alert-level.low { background: #e8f5e8; color: #2e7d32; }
-    .current-alert-level.all { background: #e3f2fd; color: #1565c0; }
-  </style>
+<meta charset="utf-8">
+<style>
+body {
+  width: 450px;
+  padding: 15px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-size: 13px;
+  color: #333;
+  margin: 0;
+}
+h1 {
+  font-size: 16px;
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.header-icon {
+  width: 20px;
+  height: 20px;
+  background-color: #3498db;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 12px;
+}
+.controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+button {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  background: #3498db;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+button:hover {
+  background: #2980b9;
+}
+button:active {
+  transform: translateY(1px);
+}
+button#deepScan {
+  background: #9b59b6;
+}
+button#deepScan:hover {
+  background: #8e44ad;
+}
+#result {
+  max-height: 500px;
+  overflow-y: auto;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  padding: 10px;
+  background: #f9f9f9;
+  font-family: monospace;
+  font-size: 12px;
+}
+.risk-high { color: #e74c3c; font-weight: bold; }
+.risk-medium { color: #e67e22; font-weight: bold; }
+.risk-low { color: #2ecc71; font-weight: bold; }
+.risk-info { color: #3498db; font-weight: bold; }
+.findings-container {
+  margin-bottom: 15px;
+  border-left: 3px solid #3498db;
+  padding-left: 10px;
+}
+.js-file {
+  margin: 15px 0;
+  padding: 10px;
+  background: white;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.file-header {
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #2c3e50;
+  display: flex;
+  justify-content: space-between;
+}
+.match-item {
+  margin: 5px 0;
+  padding-left: 15px;
+}
+.match-context {
+  background: #f1f1f1;
+  padding: 5px 10px;
+  border-radius: 3px;
+  margin: 3px 0;
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.stats {
+  display: flex;
+  justify-content: space-between;
+  margin: 10px 0;
+  font-size: 12px;
+  color: #7f8c8d;
+}
+.loader {
+  display: none;
+  text-align: center;
+  margin: 10px 0;
+}
+.spinner {
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #3498db;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.settings-toggle {
+  color: #3498db;
+  text-decoration: none;
+  font-size: 12px;
+  margin-top: 5px;
+  display: inline-block;
+}
+.settings {
+  margin-top: 10px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  display: none;
+  border: 1px solid #e9ecef;
+}
+.setting-item {
+  margin: 8px 0;
+}
+.notification {
+  padding: 8px;
+  border-radius: 4px;
+  margin: 10px 0;
+  font-size: 12px;
+}
+.notification.success {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+.notification.warning {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeaa7;
+}
+.notification.error {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+.risk-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+  margin-left: 8px;
+}
+.risk-badge.high { background: #ffcccc; color: #cc0000; }
+.risk-badge.medium { background: #ffebcc; color: #e65c00; }
+.risk-badge.low { background: #ccffcc; color: #006600; }
+.risk-badge.info { background: #cce6ff; color: #003399; }
+.copy-btn {
+  background: #eee;
+  border: 1px solid #ddd;
+  color: #555;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  margin-left: 8px;
+}
+.copy-btn:hover {
+  background: #ddd;
+}
+.truncated {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.toggle-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 5px 0;
+}
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+}
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+  border-radius: 20px;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+input:checked + .slider {
+  background-color: #3498db;
+}
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+/* 告警级别选择器 */
+.alert-level-selector {
+  display: flex;
+  gap: 5px;
+  margin-top: 5px;
+}
+.alert-level-option {
+  flex: 1;
+  padding: 6px 0;
+  text-align: center;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+.alert-level-option:hover {
+  background: #f8f9fa;
+}
+.alert-level-option.selected {
+  border-color: #3498db;
+  background: #e3f2fd;
+  font-weight: bold;
+}
+.alert-level-high { border-left: 3px solid #e74c3c; }
+.alert-level-medium { border-left: 3px solid #e67e22; }
+.alert-level-low { border-left: 3px solid #2ecc71; }
+.alert-level-all { border-left: 3px solid #3498db; }
+.alert-level-desc {
+  font-size: 11px;
+  color: #6c757d;
+  margin-top: 3px;
+  padding-left: 5px;
+}
+.current-alert-level {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: bold;
+}
+.current-alert-level.high { background: #ffebee; color: #c62828; }
+.current-alert-level.medium { background: #fff8e1; color: #e65100; }
+.current-alert-level.low { background: #e8f5e8; color: #2e7d32; }
+.current-alert-level.all { background: #e3f2fd; color: #1565c0; }
+</style>
 </head>
 <body>
-  <h1><span class="header-icon">🛡️</span>敏感信息检测工具 <span id="currentAlertLevel" class="current-alert-level medium">中及以上风险</span></h1>
-  
-  <div class="controls">
-    <button id="extract">检测当前页面</button>
-    <button id="deepScan">深度扫描JS文件</button>
-  </div>
-  
-  <div class="loader">
-    <div class="spinner"></div>
-    <div id="loading-text">正在分析中...</div>
-  </div>
-  
-  <div id="notification-container"></div>
-  
-  <div id="result">
-    <p>点击上方按钮开始检测敏感信息</p>
-  </div>
-  
-  <a href="#" class="settings-toggle" id="toggleSettings">高级设置 ▼</a>
-  <div class="settings" id="settingsPanel">
-    <div class="setting-item">
-      <div class="toggle-container">
-        <label class="toggle-switch">
-          <input type="checkbox" id="enableAutoBlock">
-          <span class="slider"></span>
-        </label>
-        <span>启用自动监控</span>
-      </div>
-      <div style="font-size: 11px; color: #6c757d; margin-left: 48px; margin-top: 3px;">
-        在输入和提交时自动检测敏感信息
-      </div>
-    </div>
-    
-    <div class="setting-item">
-      <div style="font-weight: 500; margin-bottom: 5px;">告警级别</div>
-      <div class="alert-level-selector">
-        <div class="alert-level-option alert-level-high" data-level="high">
-          高风险
-        </div>
-        <div class="alert-level-option alert-level-medium selected" data-level="medium">
-          中风险+
-        </div>
-        <div class="alert-level-option alert-level-low" data-level="low">
-          低风险+
-        </div>
-        <div class="alert-level-option alert-level-all" data-level="all">
-          所有
-        </div>
-      </div>
-      <div class="alert-level-desc">
-        <span class="high-desc">仅API密钥、密码、身份证等高风险信息</span>
-        <span class="medium-desc" style="display: inline;">高风险和中风险信息（如ID、内部参数）</span>
-        <span class="low-desc" style="display: none;">高、中、低风险信息</span>
-        <span class="all-desc" style="display: none;">所有类型敏感信息（包括邮箱、手机号）</span>
-      </div>
-    </div>
-    
-    <div class="setting-item">
-      <label>
-        <input type="checkbox" id="enableContext"> 显示匹配上下文
+<h1><span class="header-icon">🛡️</span>敏感信息检测工具 <span id="currentAlertLevel" class="current-alert-level medium">中及以上风险</span></h1>
+<div class="controls">
+  <button id="extract">检测当前页面</button>
+  <button id="deepScan">深度扫描JS文件</button>
+</div>
+<div class="loader">
+  <div class="spinner"></div>
+  <div id="loading-text">正在分析中...</div>
+</div>
+<div id="notification-container"></div>
+<div id="result">
+  <p>点击上方按钮开始检测敏感信息</p>
+</div>
+<a href="#" class="settings-toggle" id="toggleSettings">高级设置 ▼</a>
+<div class="settings" id="settingsPanel">
+  <div class="setting-item">
+    <div class="toggle-container">
+      <label class="toggle-switch">
+        <input type="checkbox" id="enableAutoBlock">
+        <span class="slider"></span>
       </label>
-      <div style="font-size: 11px; color: #6c757d; margin-left: 20px; margin-top: 3px;">
-        在检测结果中显示匹配位置的前后文
+      <span>启用自动监控</span>
+    </div>
+    <div style="font-size: 11px; color: #6c757d; margin-left: 48px; margin-top: 3px;">
+      在输入和提交时自动检测敏感信息
+    </div>
+  </div>
+  
+  <div class="setting-item">
+    <div style="font-weight: 500; margin-bottom: 5px;">告警级别</div>
+    <div class="alert-level-selector">
+      <div class="alert-level-option alert-level-high" data-level="high">
+        高风险
+      </div>
+      <div class="alert-level-option alert-level-medium selected" data-level="medium">
+        中风险+
+      </div>
+      <div class="alert-level-option alert-level-low" data-level="low">
+        低风险+
+      </div>
+      <div class="alert-level-option alert-level-all" data-level="all">
+        所有
+      </div>
+    </div>
+    <div class="alert-level-desc">
+      <span class="high-desc">仅API密钥、密码、身份证等高风险信息</span>
+      <span class="medium-desc" style="display: inline;">高风险和中风险信息（如ID、内部参数）</span>
+      <span class="low-desc" style="display: none;">高、中、低风险信息</span>
+      <span class="all-desc" style="display: none;">所有类型敏感信息（包括邮箱、手机号）</span>
+    </div>
+  </div>
+  
+  <div class="setting-item">
+    <div style="font-weight: 500; margin-bottom: 8px;">生效域名设置</div>
+    <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+      <select id="domainMode" style="flex: 1; padding: 4px; border-radius: 4px; border: 1px solid #ccc;">
+        <option value="include">仅在以下域名生效</option>
+        <option value="exclude">在所有域名生效(除以下之外)</option>
+      </select>
+      <button id="addDomain" style="background: #27ae60; padding: 4px 8px; border-radius: 4px; border: none; color: white;">添加</button>
+    </div>
+    
+    <div style="background: #f8f9fa; border-radius: 4px; padding: 10px; margin-bottom: 10px;">
+      <div style="font-weight: 500; margin-bottom: 5px;">当前域名列表:</div>
+      <div id="domainListContainer" style="max-height: 150px; overflow-y: auto;">
+        <!-- 域名列表将在此处动态生成 -->
       </div>
     </div>
     
-    <button id="saveSettings" style="background: #27ae60; width: 100%; margin-top: 15px;">保存设置</button>
+    <div style="font-size: 11px; color: #6c757d; margin-top: 5px;">
+      <p style="margin: 3px 0;">示例：wiki.icbc 或 *.icbc.com</p>
+      <p style="margin: 3px 0;">注意：添加后需要刷新页面才能生效</p>
+    </div>
   </div>
-
-  <script src="popup.js"></script>
+  
+  <div class="setting-item">
+    <label>
+      <input type="checkbox" id="enableContext"> 显示匹配上下文
+    </label>
+    <div style="font-size: 11px; color: #6c757d; margin-left: 20px; margin-top: 3px;">
+      在检测结果中显示匹配位置的前后文
+    </div>
+  </div>
+  
+  <button id="saveSettings" style="background: #27ae60; width: 100%; margin-top: 15px;">保存设置</button>
+</div>
+<script src="popup.js"></script>
 </body>
 </html>

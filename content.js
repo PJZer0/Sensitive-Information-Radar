@@ -1,6 +1,93 @@
-// content.js - 增强版敏感信息监控（支持Confluence富文本编辑器/iframe）
+// content.js - 智能监控输入框中的敏感信息（含评论区/发帖区），支持域名过滤
 (function () {
   'use strict';
+
+  // ========== 域名检查逻辑 ==========
+  let domainSettings = {
+    domainMode: 'include', // 'include' or 'exclude'
+    includeDomains: ['wiki.icbc'], // 默认只监控这个域名
+    excludeDomains: ['example.com', 'test.com'] // 默认排除这些域名
+  };
+  
+  let extensionActive = false;
+  let isConfluencePage = false;
+
+  function checkDomainActivation() {
+    return new Promise((resolve) => {
+      // 获取当前页面域名
+      const hostname = window.location.hostname.toLowerCase();
+      
+      // 检查是否是Confluence页面
+      isConfluencePage = document.querySelector('#wysiwygTextarea_ifr') || 
+                         document.getElementById('content-title') || 
+                         document.getElementById('rte-button-publish');
+      
+      // 如果没有chrome API（如在Firefox中），使用默认设置
+      if (typeof chrome === 'undefined' || !chrome.runtime) {
+        extensionActive = checkDomainAgainstSettings(hostname);
+        resolve(extensionActive);
+        return;
+      }
+      
+      // 向后台请求域名设置
+      chrome.runtime.sendMessage({ action: "checkDomain", url: window.location.href }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn('获取域名设置失败，使用默认设置:', chrome.runtime.lastError);
+          extensionActive = checkDomainAgainstSettings(hostname);
+        } else if (response) {
+          domainSettings = {
+            domainMode: response.settings.domainMode,
+            includeDomains: response.settings.includeDomains,
+            excludeDomains: response.settings.excludeDomains
+          };
+          extensionActive = response.shouldActivate;
+        } else {
+          extensionActive = checkDomainAgainstSettings(hostname);
+        }
+        resolve(extensionActive);
+      });
+    });
+  }
+  
+  function checkDomainAgainstSettings(hostname) {
+    // 清理域名，移除www.前缀
+    const cleanHostname = hostname.replace(/^www\./, '');
+    
+    if (domainSettings.domainMode === 'include') {
+      // 包含模式：只在包含列表中的域名生效
+      return domainSettings.includeDomains.some(domain => {
+        const cleanDomain = domain.toLowerCase().replace(/^www\./, '');
+        // 精确匹配或子域名匹配
+        return cleanHostname === cleanDomain || 
+               cleanHostname.endsWith('.' + cleanDomain) ||
+               // 处理通配符 *.example.com
+               (cleanDomain.startsWith('*.') && cleanHostname.endsWith(cleanDomain.substring(1)));
+      });
+    } else {
+      // 排除模式：在所有域名生效，除了排除列表
+      const shouldExclude = domainSettings.excludeDomains.some(domain => {
+        const cleanDomain = domain.toLowerCase().replace(/^www\./, '');
+        return cleanHostname === cleanDomain || 
+               cleanHostname.endsWith('.' + cleanDomain) ||
+               (cleanDomain.startsWith('*.') && cleanHostname.endsWith(cleanDomain.substring(1)));
+      });
+      return !shouldExclude;
+    }
+  }
+
+  // ========== 初始化 ==========
+  checkDomainActivation().then((isActive) => {
+    if (isActive) {
+      console.log(`敏感信息雷达：在 ${window.location.hostname} 域名已激活`);
+      initializeMonitoring();
+    } else {
+      console.log(`敏感信息雷达：在 ${window.location.hostname} 域名未激活（不在监控列表中）`);
+    }
+  }).catch(error => {
+    console.error('域名检查出错:', error);
+    // 出错时默认激活
+    initializeMonitoring();
+  });
 
   // ========== 全局状态 ==========
   let extensionSettings = {
@@ -14,8 +101,13 @@
   const SCAN_INTERVAL = 1000; // 1秒扫描间隔
   const WARNING_TIMEOUT = 5000; // 警告显示时间
   const CONFERENCE_EDITOR_SELECTOR = '#wysiwygTextarea_ifr'; // Confluence编辑器iframe
+  let formSubmitIntercepted = false; // 标记表单是否已被拦截
+  const ACTIVE_SCAN_CATEGORIES = [
+    'API Key', 'Secret', '阿里云AK', '腾讯云AK', '百度云AK', '明文ID参数', 
+    'JSON-ID参数', '身份证', '手机号', '邮箱', '密码字段', 'flag!!!', 'ak sk'
+  ];
 
-  // ========== 完整敏感信息检测规则 ==========
+  // ========== 敏感信息检测规则 ==========
   const SENSITIVE_PATTERNS = {
     'API Key': /(?:api[_-]?(?:key|token)|access[_-]?token)["'\s]*[:=][\s]*["']([A-Za-z0-9\-_]{20,})["']/gi,
     'Secret': /(?:secret|secret[_-]?key|client[_-]?secret)["'\s]*[:=][\s]*["']([A-Za-z0-9\-_]{20,})["']/gi,
@@ -98,7 +190,7 @@
 
   // 检测敏感信息（根据告警等级过滤）
   function detectSensitiveData(data) {
-    if (!extensionSettings.enableAutoBlock) return null;
+    if (!extensionSettings.enableAutoBlock || !extensionActive) return null;
     const results = {};
     let hasSensitiveData = false;
     let highestRiskLevel = 'info';
@@ -119,6 +211,9 @@
 
     // 遍历所有规则
     for (const [category, regex] of Object.entries(SENSITIVE_PATTERNS)) {
+      // 只检查活跃类别（提高性能）
+      if (!ACTIVE_SCAN_CATEGORIES.includes(category)) continue;
+      
       const riskLevel = getRiskLevel(category);
       const riskValue = RISK_VALUES[riskLevel];
       if (riskValue < minRiskValue) continue;
@@ -151,7 +246,7 @@
     return `${categories[0]} 等 ${count} 类敏感信息`;
   }
 
-  // ========== 特定于Confluence的监控 ==========
+  // ========== Confluence编辑器特定监控 ==========
   function monitorConfluenceEditor() {
     // 监控页面标题输入
     const titleInput = document.getElementById('content-title');
@@ -165,10 +260,10 @@
       monitorEditorFrame(editorFrame);
     }
 
-    // 监控评论/发帖表单
+    // 拦截保存/发布按钮
     const saveButton = document.getElementById('rte-button-publish');
-    if (saveButton) {
-      setupFormInterception();
+    if (saveButton && !saveButton.dataset.sensitiveMonitored) {
+      setupButtonInterception(saveButton);
     }
   }
 
@@ -191,7 +286,7 @@
             lastContent = currentContent;
             scanConfluenceEditable(editableElement, frame);
           }
-          setTimeout(checkForChanges, 500);
+          setTimeout(checkForChanges, 1000);
         }
 
         // 初始扫描
@@ -201,7 +296,13 @@
         checkForChanges();
         
         // 交互事件监听
-        editableElement.addEventListener('input', () => scanConfluenceEditable(editableElement, frame));
+        editableElement.addEventListener('input', () => {
+          clearTimeout(editableElement.scanTimeout);
+          editableElement.scanTimeout = setTimeout(() => {
+            scanConfluenceEditable(editableElement, frame);
+          }, 500);
+        });
+        
         editableElement.addEventListener('focus', () => scanConfluenceEditable(editableElement, frame));
         editableElement.addEventListener('blur', () => scanConfluenceEditable(editableElement, frame));
         editableElement.addEventListener('paste', () => setTimeout(() => scanConfluenceEditable(editableElement, frame), 100));
@@ -217,6 +318,7 @@
     if (frame.contentDocument && frame.contentDocument.readyState === 'complete') {
       handleFrameLoad();
     } else {
+      frame.removeEventListener('load', handleFrameLoad); // 先移除旧监听，防止重复
       frame.addEventListener('load', handleFrameLoad);
     }
   }
@@ -238,52 +340,20 @@
     return scanResult;
   }
 
-  function setupFormInterception() {
-    const saveButton = document.getElementById('rte-button-publish');
-    if (!saveButton || saveButton.dataset.monitored) return;
+  // 拦截保存按钮，而非表单提交
+  function setupButtonInterception(button) {
+    if (!button || button.dataset.sensitiveMonitored) return;
     
-    saveButton.dataset.monitored = 'true';
+    button.dataset.sensitiveMonitored = 'true';
     
-    saveButton.addEventListener('click', function(e) {
-      if (!extensionSettings.enableAutoBlock) return;
+    button.addEventListener('click', function(e) {
+      if (!extensionSettings.enableAutoBlock || formSubmitIntercepted || !extensionActive) return;
       
-      const scanResults = [];
+      // 防止重复拦截和事件冒泡
+      e.stopPropagation();
       
-      // 1. 检查页面标题
-      const titleInput = document.getElementById('content-title');
-      if (titleInput && titleInput.value) {
-        const titleResult = detectSensitiveData(titleInput.value);
-        if (titleResult) {
-          scanResults.push({
-            element: titleInput,
-            result: titleResult,
-            field: '页面标题'
-          });
-        }
-      }
+      const scanResults = checkForSensitiveData();
       
-      // 2. 检查编辑器内容
-      const editorFrame = document.querySelector(CONFERENCE_EDITOR_SELECTOR);
-      if (editorFrame) {
-        try {
-          const frameDoc = editorFrame.contentDocument || editorFrame.contentWindow.document;
-          const editableElement = frameDoc.body;
-          if (editableElement) {
-            const contentResult = detectSensitiveData(editableElement.innerHTML);
-            if (contentResult) {
-              scanResults.push({
-                element: editorFrame,
-                result: contentResult,
-                field: '页面内容'
-              });
-            }
-          }
-        } catch (err) {
-          console.warn('无法检查编辑器内容:', err);
-        }
-      }
-      
-      // 3. 如果有敏感信息，阻止提交并显示警告
       if (scanResults.length > 0) {
         e.preventDefault();
         e.stopPropagation();
@@ -310,9 +380,20 @@
           '敏感信息检测警告',
           `检测到表单包含敏感信息：<br><br>${fieldDesc}<br><br>当前告警级别: <strong>${getAlertLevelText(extensionSettings.alertLevel)}</strong><br>是否继续提交？`,
           () => {
-            // 用户确认后，临时移除监听器并触发原始点击
-            saveButton.removeEventListener('click', arguments.callee);
-            saveButton.click();
+            // 标记为已拦截，防止循环
+            formSubmitIntercepted = true;
+            
+            // 使用requestAnimationFrame确保在下一帧执行
+            requestAnimationFrame(() => {
+              // 创建新的点击事件
+              const clickEvent = new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+                view: window
+              });
+              // 重新触发按钮点击
+              button.dispatchEvent(clickEvent);
+            });
           },
           () => {
             console.log('用户取消了表单提交');
@@ -323,17 +404,66 @@
     }, true); // 使用捕获阶段
   }
 
-  // ========== 通用监控功能（增强版）==========
+  function checkForSensitiveData() {
+    if (!extensionActive) return [];
+    
+    const results = [];
+    
+    // 1. 检查页面标题
+    const titleInput = document.getElementById('content-title');
+    if (titleInput && titleInput.value) {
+      const titleResult = detectSensitiveData(titleInput.value);
+      if (titleResult) {
+        results.push({
+          element: titleInput,
+          result: titleResult,
+          field: '页面标题'
+        });
+      }
+    }
+    
+    // 2. 检查编辑器内容
+    const editorFrame = document.querySelector(CONFERENCE_EDITOR_SELECTOR);
+    if (editorFrame) {
+      try {
+        const frameDoc = editorFrame.contentDocument || editorFrame.contentWindow.document;
+        const editableElement = frameDoc.body;
+        if (editableElement) {
+          const contentResult = detectSensitiveData(editableElement.innerHTML);
+          if (contentResult) {
+            results.push({
+              element: editorFrame,
+              result: contentResult,
+              field: '页面内容'
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('无法检查编辑器内容:', err);
+      }
+    }
+    
+    return results;
+  }
+
+  // ========== 通用监控功能 ==========
   function getUniqueElementId(el, prefix = '') {
     if (!el) return `element-${Date.now()}`;
     if (el.id) return `${prefix}${el.id}`;
     if (el.name) return `${prefix}${el.name}`;
-    return `${prefix}elem-${Array.from(el.parentNode?.children || []).indexOf(el)}`;
+    const parent = el.parentNode;
+    if (parent) {
+      const siblings = Array.from(parent.children);
+      const index = siblings.indexOf(el);
+      return `${prefix}${el.tagName.toLowerCase()}-${index}`;
+    }
+    return `${prefix}${el.tagName.toLowerCase()}-${Date.now()}`;
   }
 
   function getValueFromElement(el) {
+    if (!el) return '';
     if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-      return el.value;
+      return el.value || '';
     } else if (el.hasAttribute('contenteditable') || el.isContentEditable) {
       return el.innerText || el.textContent || el.innerHTML || '';
     }
@@ -341,6 +471,7 @@
   }
 
   function clearInputWarning(el, prefix = '') {
+    if (!el) return false;
     const warningId = `sensitive-warning-${getUniqueElementId(el, prefix)}`;
     const existing = document.getElementById(warningId);
     if (existing) {
@@ -351,13 +482,19 @@
   }
 
   function showInputWarning(el, scanResult, prefix = '') {
+    if (!el || !scanResult) return;
     clearInputWarning(el, prefix);
     const warningId = `sensitive-warning-${getUniqueElementId(el, prefix)}`;
     
-    // 确保警告添加到正确的位置（处理iframe等情况）
-    const container = el.tagName === 'IFRAME' ? 
-      (el.parentNode || document.body) : 
-      document.body;
+    // 确保警告添加到正确的位置
+    let container = document.body;
+    if (el.tagName === 'IFRAME') {
+      container = el.parentNode || document.body;
+      // 如果在iframe中，可能需要调整容器
+      if (container.tagName === 'BODY' && container !== document.body) {
+        container = document.body;
+      }
+    }
     
     const warning = document.createElement('div');
     warning.id = warningId;
@@ -369,14 +506,13 @@
       border-radius: 4px;
       padding: 8px 12px;
       font-size: 12px;
-      z-index: 2147483647; /* 最大z-index */
+      z-index: 2147483647;
       max-width: 300px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.15);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       pointer-events: none;
     `;
 
-    const desc = getRiskDescription(scanResult.results);
     const categories = Object.keys(scanResult.results);
     const risksHtml = categories.map(category => {
       const color = getRiskColor(category);
@@ -401,36 +537,62 @@
       </div>
     `;
 
-    // 定位警告
-    const rect = el.getBoundingClientRect();
-    let top = rect.bottom + window.scrollY + 5;
-    let left = rect.left + window.scrollX;
-    
-    // 防止警告超出视口
-    if (top + 100 > window.innerHeight + window.scrollY) {
-      top = rect.top + window.scrollY - 60;
-    }
-    if (left + 300 > window.innerWidth + window.scrollX) {
-      left = window.innerWidth + window.scrollX - 320;
-    }
-
-    warning.style.top = `${top}px`;
-    warning.style.left = `${left}px`;
-    
-    container.appendChild(warning);
-
-    // 自动消失
-    setTimeout(() => {
-      if (container.contains(warning)) {
-        warning.remove();
+    try {
+      // 定位警告
+      const rect = el.getBoundingClientRect();
+      let top = rect.bottom + window.scrollY + 5;
+      let left = rect.left + window.scrollX;
+      
+      // 防止警告超出视口
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      
+      if (left + 320 > viewportWidth) {
+        left = viewportWidth - 320;
       }
-    }, WARNING_TIMEOUT);
+      if (left < 0) left = 0;
+      
+      if (top + 100 > viewportHeight + window.scrollY) {
+        top = rect.top + window.scrollY - 80;
+      }
+      if (top < window.scrollY) top = window.scrollY + 10;
+
+      warning.style.top = `${top}px`;
+      warning.style.left = `${left}px`;
+      
+      container.appendChild(warning);
+
+      // 自动消失
+      setTimeout(() => {
+        if (container.contains(warning)) {
+          warning.remove();
+        }
+      }, WARNING_TIMEOUT);
+    } catch (e) {
+      console.warn('显示警告时出错:', e);
+      // 如果定位出错，尝试添加到body
+      if (!document.body.contains(warning)) {
+        document.body.appendChild(warning);
+        setTimeout(() => {
+          if (document.body.contains(warning)) {
+            warning.remove();
+          }
+        }, WARNING_TIMEOUT);
+      }
+    }
   }
 
   // 自定义确认对话框
   function showCustomConfirm(title, message, onConfirm, onCancel, riskLevel = 'medium') {
-    const existing = document.getElementById('custom-confirm-dialog');
-    if (existing) existing.remove();
+    // 移除现有对话框
+    const existingOverlay = document.getElementById('custom-confirm-overlay');
+    if (existingOverlay) {
+      existingOverlay.remove();
+    }
+    const existingDialog = document.getElementById('custom-confirm-dialog');
+    if (existingDialog) {
+      existingDialog.remove();
+    }
 
     const overlay = document.createElement('div');
     overlay.id = 'custom-confirm-overlay';
@@ -441,7 +603,7 @@
       right: 0;
       bottom: 0;
       background: rgba(0,0,0,0.5);
-      z-index: 2147483646; /* 低于警告，高于一切 */
+      z-index: 2147483646;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -488,20 +650,32 @@
     overlay.appendChild(dialog);
     document.body.style.overflow = 'hidden';
 
-    document.getElementById('confirm-ok').addEventListener('click', function () {
-      cleanup();
-      onConfirm();
-    });
-    document.getElementById('confirm-cancel').addEventListener('click', function () {
-      cleanup();
-      onCancel();
-    });
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) {
-        cleanup();
-        onCancel();
+    // 确保按钮存在再添加事件
+    setTimeout(() => {
+      const okBtn = document.getElementById('confirm-ok');
+      const cancelBtn = document.getElementById('confirm-cancel');
+      
+      if (okBtn) {
+        okBtn.addEventListener('click', function () {
+          cleanup();
+          onConfirm();
+        });
       }
-    });
+      
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', function () {
+          cleanup();
+          onCancel();
+        });
+      }
+      
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) {
+          cleanup();
+          onCancel();
+        }
+      });
+    }, 100);
 
     const keyHandler = function (e) {
       if (e.key === 'Escape') {
@@ -512,7 +686,8 @@
     document.addEventListener('keydown', keyHandler);
 
     function cleanup() {
-      if (document.body.contains(overlay)) {
+      const overlay = document.getElementById('custom-confirm-overlay');
+      if (overlay && document.body.contains(overlay)) {
         document.body.removeChild(overlay);
       }
       document.body.style.overflow = '';
@@ -529,9 +704,10 @@
     }[level] || '中及以上风险';
   }
 
-  // ========== 通用输入监控（增强版）==========
+  // ========== 通用输入监控 ==========
   function setupElementMonitoring(el) {
     if (observedInputs.has(el)) return;
+    if (!el || !document.body.contains(el)) return;
 
     let isTextareaOrInput = el.tagName === 'TEXTAREA' || el.tagName === 'INPUT';
     let isContentEditable = el.hasAttribute('contenteditable') || el.isContentEditable;
@@ -569,10 +745,14 @@
   }
 
   function scanElement(el) {
+    if (!extensionActive || !el || !document.body.contains(el)) return null;
+    
     const value = getValueFromElement(el);
     if (!value || value.length < 4) {
-      el.style.outline = '';
-      el.style.boxShadow = '';
+      if (el.style) {
+        el.style.outline = '';
+        el.style.boxShadow = '';
+      }
       clearInputWarning(el);
       return null;
     }
@@ -580,13 +760,17 @@
     const scanResult = detectSensitiveData(value);
     if (scanResult) {
       const color = getRiskColor(Object.keys(scanResult.results)[0]);
-      el.style.outline = `2px solid ${color}`;
-      el.style.boxShadow = `0 0 5px ${color}`;
+      if (el.style) {
+        el.style.outline = `2px solid ${color}`;
+        el.style.boxShadow = `0 0 5px ${color}`;
+      }
       showInputWarning(el, scanResult);
       return scanResult;
     } else {
-      el.style.outline = '';
-      el.style.boxShadow = '';
+      if (el.style) {
+        el.style.outline = '';
+        el.style.boxShadow = '';
+      }
       clearInputWarning(el);
       return null;
     }
@@ -594,10 +778,17 @@
 
   // ========== 初始化监控 ==========
   function initializeMonitoring() {
+    if (!extensionActive) return;
+    
+    // 获取设置
     if (typeof chrome !== 'undefined' && chrome.runtime) {
       chrome.runtime.sendMessage({ action: "getSettings" }, (response) => {
         if (response) {
-          extensionSettings = response;
+          extensionSettings = {
+            enableAutoBlock: response.enableAutoBlock !== undefined ? response.enableAutoBlock : true,
+            alertLevel: response.alertLevel || 'all',
+            enableContext: response.enableContext !== undefined ? response.enableContext : true
+          };
         }
         startMonitoring();
       });
@@ -607,17 +798,17 @@
   }
 
   function startMonitoring() {
+    if (!extensionActive) return;
+    
     // 监控标准输入元素
     document.querySelectorAll('input, textarea, [contenteditable="true"]').forEach(setupElementMonitoring);
     
-    // 处理Confluence编辑器特殊情况
-    if (document.querySelector(CONFERENCE_EDITOR_SELECTOR) || 
-        document.getElementById('content-title') || 
-        document.getElementById('rte-button-publish')) {
-      monitorConfluenceEditor();
+    // 特殊处理Confluence编辑器
+    if (isConfluencePage) {
+      setTimeout(monitorConfluenceEditor, 500);
     }
     
-    // 监控表单
+    // 标准表单拦截（兼容其他网站）
     document.querySelectorAll('form').forEach(form => {
       if (!form.dataset.sensitiveMonitored) {
         form.dataset.sensitiveMonitored = 'true';
@@ -627,33 +818,37 @@
 
     // MutationObserver 监控动态内容
     const observer = new MutationObserver(mutations => {
+      if (!extensionActive) return;
+      
       mutations.forEach(mutation => {
         if (mutation.type === 'childList') {
           mutation.addedNodes.forEach(node => {
             if (node.nodeType === 1) {
               // 检查是否是Confluence编辑器相关元素
-              if (node.querySelector(CONFERENCE_EDITOR_SELECTOR) || 
-                  node.id === 'content-title' || 
-                  node.id === 'rte-button-publish') {
-                setTimeout(monitorConfluenceEditor, 100);
+              if ((node.querySelector && node.querySelector(CONFERENCE_EDITOR_SELECTOR)) || 
+                  (node.id === 'content-title') || 
+                  (node.id === 'rte-button-publish')) {
+                setTimeout(monitorConfluenceEditor, 300);
               }
               
               // 标准元素监控
-              if (node.matches('input, textarea, [contenteditable="true"]')) {
+              if (node.matches && node.matches('input, textarea, [contenteditable="true"]')) {
                 setupElementMonitoring(node);
-              } else if (node.matches('form')) {
+              } else if (node.matches && node.matches('form')) {
                 if (!node.dataset.sensitiveMonitored) {
                   node.dataset.sensitiveMonitored = 'true';
                   node.addEventListener('submit', handleFormSubmit, true);
                 }
               } else {
-                node.querySelectorAll('input, textarea, [contenteditable="true"]').forEach(setupElementMonitoring);
-                node.querySelectorAll('form').forEach(form => {
-                  if (!form.dataset.sensitiveMonitored) {
-                    form.dataset.sensitiveMonitored = 'true';
-                    form.addEventListener('submit', handleFormSubmit, true);
-                  }
-                });
+                if (node.querySelectorAll) {
+                  node.querySelectorAll('input, textarea, [contenteditable="true"]').forEach(setupElementMonitoring);
+                  node.querySelectorAll('form').forEach(form => {
+                    if (!form.dataset.sensitiveMonitored) {
+                      form.dataset.sensitiveMonitored = 'true';
+                      form.addEventListener('submit', handleFormSubmit, true);
+                    }
+                  });
+                }
               }
             }
           });
@@ -662,10 +857,12 @@
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
+    
+    console.log('敏感信息雷达：监控已启动');
   }
   
   function handleFormSubmit(e) {
-    if (!extensionSettings.enableAutoBlock) return;
+    if (!extensionSettings.enableAutoBlock || formSubmitIntercepted || !extensionActive) return;
     
     let hasSensitiveData = false;
     const sensitiveFields = [];
@@ -687,32 +884,9 @@
       }
     }
     
-    // 检查富文本编辑器（在iframe中）
-    const editorFrame = document.querySelector(CONFERENCE_EDITOR_SELECTOR);
-    if (editorFrame) {
-      try {
-        const frameDoc = editorFrame.contentDocument || editorFrame.contentWindow.document;
-        const editableElement = frameDoc.body;
-        if (editableElement) {
-          const contentResult = detectSensitiveData(editableElement.innerHTML);
-          if (contentResult) {
-            hasSensitiveData = true;
-            const categories = Object.keys(contentResult.results);
-            sensitiveFields.push({
-              name: '富文本内容',
-              value: editableElement.textContent.substring(0, 50) + '...',
-              categories: categories,
-              riskLevel: contentResult.highestRiskLevel
-            });
-          }
-        }
-      } catch (err) {
-        console.warn('无法检查iframe内容:', err);
-      }
-    }
-    
     if (hasSensitiveData) {
       e.preventDefault();
+      e.stopPropagation();
       
       // 计算最高风险级别
       let highestRisk = 'info';
@@ -734,9 +908,19 @@
         '敏感信息检测警告',
         `检测到表单包含敏感信息：<br><br>${fieldDesc}<br><br>当前告警级别: <strong>${getAlertLevelText(extensionSettings.alertLevel)}</strong><br>是否继续提交？`,
         () => {
-          // 用户确认后，移除监听器并提交
-          this.removeEventListener('submit', handleFormSubmit, true);
-          this.submit();
+          formSubmitIntercepted = true;
+          
+          // 在下一帧重新提交表单
+          requestAnimationFrame(() => {
+            // 移除监听器以防止无限循环
+            this.removeEventListener('submit', handleFormSubmit, true);
+            // 重新触发提交
+            if (typeof this.requestSubmit === 'function') {
+              this.requestSubmit();
+            } else {
+              this.submit();
+            }
+          });
         },
         () => {
           console.log('用户取消了表单提交');
@@ -748,10 +932,23 @@
 
   // ========== 启动 ==========
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeMonitoring);
+    document.addEventListener('DOMContentLoaded', () => {
+      // 二次检查，确保DOM完全加载
+      setTimeout(() => {
+        if (extensionActive) {
+          initializeMonitoring();
+        }
+      }, 500);
+    });
   } else {
-    initializeMonitoring();
+    // DOM已经加载完成
+    setTimeout(() => {
+      if (extensionActive) {
+        initializeMonitoring();
+      }
+    }, 300);
   }
 
-  console.log('敏感信息雷达：已激活评论区/发帖区增强监控');
+  // 添加全局状态检查
+  window.__SENSITIVE_MONITOR_ACTIVE = extensionActive;
 })();

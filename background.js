@@ -69,6 +69,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
   
+  // 更新域名设置
+  if (request.action === "updateDomainSettings") {
+    chrome.storage.sync.set({
+      domainMode: request.domainMode,
+      includeDomains: request.includeDomains,
+      excludeDomains: request.excludeDomains
+    }, () => {
+      sendResponse({ success: true });
+    });
+    return true;
+  }
+  
   // 更新设置
   if (request.action === "updateSettings") {
     chrome.storage.sync.set(request.settings, () => {

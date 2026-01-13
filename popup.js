@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const loadingText = document.getElementById('loading-text');
   const notificationContainer = document.getElementById('notification-container');
   const currentAlertLevelEl = document.getElementById('currentAlertLevel');
-  
+
   // 默认设置
   let settings = {
     enableAutoBlock: true,
@@ -21,10 +21,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('enableAutoBlock').checked = settings.enableAutoBlock;
     document.getElementById('enableContext').checked = settings.enableContext;
     document.getElementById('domainMode').value = settings.domainMode;
-    
+
     // 更新域名列表UI
     renderDomainList();
-    
+
     // 更新告警级别UI
     updateAlertLevelUI(settings.alertLevel);
   });
@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 统计风险级别
     let highRiskCount = 0, mediumRiskCount = 0, lowRiskCount = 0, infoCount = 0;
-    
+
     // 按风险级别分组
     const riskGroups = {
       high: [],
@@ -89,10 +89,10 @@ document.addEventListener('DOMContentLoaded', () => {
     Object.entries(results).forEach(([category, matches]) => {
       // 跳过空结果
       if (!matches || matches.length === 0) return;
-      
+
       // 根据分类确定风险级别
       const riskLevel = getRiskLevel(category);
-      
+
       // 统计
       switch(riskLevel) {
         case 'high': highRiskCount += matches.length; break;
@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
         case 'low': lowRiskCount += matches.length; break;
         case 'info': infoCount += matches.length; break;
       }
-      
+
       // 添加到对应风险组
       riskGroups[riskLevel].push({ category, matches });
     });
@@ -124,21 +124,21 @@ document.addEventListener('DOMContentLoaded', () => {
           const categoryDiv = document.createElement('div');
           categoryDiv.className = 'findings-container';
           categoryDiv.style.borderLeftColor = getRiskColor(category);
-          
+
           const riskClass = riskLevel === 'high' ? 'risk-high' :
                             riskLevel === 'medium' ? 'risk-medium' :
                             riskLevel === 'low' ? 'risk-low' : 'risk-info';
           const riskBadgeClass = riskLevel === 'high' ? 'high' :
                                 riskLevel === 'medium' ? 'medium' :
                                 riskLevel === 'low' ? 'low' : 'info';
-          
+
           categoryDiv.innerHTML = `<div><span class="${riskClass}">${category}</span><span class="risk-badge ${riskBadgeClass}">${riskLevel}</span></div>`;
-          
+
           matches.forEach(match => {
             const matchDiv = document.createElement('div');
             matchDiv.className = 'match-item';
             let matchContent = `<span class="${riskClass}">${escapeHtml(match.value)}</span>`;
-            
+
             // 添加上下文
             if (settings.enableContext && match.context) {
               const startIdx = Math.max(0, match.index - 30);
@@ -151,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 contextText.substring(highlightEnd);
               matchContent += `<div class="match-context">${contextText}</div>`;
             }
-            
+
             // 添加复制按钮
             matchContent += `<button class="copy-btn" data-value="${escapeHtml(match.value)}">复制</button>`;
             matchDiv.innerHTML = matchContent;
@@ -205,7 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const lowRiskCategories = [
       'Swagger UI', 'URL跳转参数', '账号字段', '加密算法', '车牌号'
     ];
-    
+
     if (highRiskCategories.includes(category)) return 'high';
     if (mediumRiskCategories.includes(category)) return 'medium';
     if (lowRiskCategories.includes(category)) return 'low';
@@ -226,13 +226,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.alert-level-option').forEach(btn => {
       btn.classList.toggle('selected', btn.dataset.level === level);
     });
-    
+
     // 更新描述
     document.querySelector('.high-desc').style.display = level === 'high' ? 'inline' : 'none';
     document.querySelector('.medium-desc').style.display = level === 'medium' ? 'inline' : 'none';
     document.querySelector('.low-desc').style.display = level === 'low' ? 'inline' : 'none';
     document.querySelector('.all-desc').style.display = level === 'all' ? 'inline' : 'none';
-    
+
     // 更新标题显示
     const levelText = {
       'high': '高风险',
@@ -263,7 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const lowRiskCategories = [
       'Swagger UI', 'URL跳转参数', '账号字段', '加密算法', '车牌号'
     ];
-    
+
     if (highRiskCategories.includes(category)) return 'high';
     if (mediumRiskCategories.includes(category)) return 'medium';
     if (lowRiskCategories.includes(category)) return 'low';
@@ -328,25 +328,25 @@ document.addEventListener('DOMContentLoaded', () => {
     Object.entries(patterns).forEach(([category, pattern]) => {
       const riskLevel = getRiskLevelForAnalysis(category);
       const riskValue = RISK_VALUES[riskLevel];
-      
+
       // 根据告警级别过滤
       if (riskValue < minRiskValue) return;
-      
+
       const matches = [];
       let match;
       while ((match = pattern.exec(content)) !== null) {
         if (matches.length >= 10) break;
-        
+
         let fullMatch = match[0];
         if (match.length > 1 && match[1]) fullMatch = match[1];
-        
+
         let context = '';
         if (settings.enableContext) {
           const startIdx = Math.max(0, match.index - 100);
           const endIdx = Math.min(content.length, match.index + match[0].length + 100);
           context = content.substring(startIdx, endIdx);
         }
-        
+
         if (!matches.some(m => m.value === fullMatch)) {
           matches.push({
             value: fullMatch,
@@ -355,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
           });
         }
       }
-      
+
       if (matches.length > 0) results[category] = matches;
     });
 
@@ -381,13 +381,13 @@ document.addEventListener('DOMContentLoaded', () => {
             showNotification(`执行错误: ${chrome.runtime.lastError.message}`, 'error');
             return;
           }
-          
+
           if (!injectionResults || !injectionResults[0] || !injectionResults[0].result) {
             hideLoader();
             resultDiv.innerHTML = '<p class="notification warning">未能获取页面内容</p>';
             return;
           }
-          
+
           const pageContent = injectionResults[0].result;
           const results = analyzeContent(pageContent, settings);
           hideLoader();
@@ -416,24 +416,24 @@ document.addEventListener('DOMContentLoaded', () => {
             showNotification(`执行错误: ${chrome.runtime.lastError.message}`, 'error');
             return;
           }
-          
+
           if (!injectionResults || !injectionResults[0] || !injectionResults[0].result) {
             hideLoader();
             resultDiv.innerHTML = '<p class="notification warning">未能获取JS文件列表</p>';
             return;
           }
-          
+
           const jsFiles = injectionResults[0].result;
           if (jsFiles.length === 0) {
             hideLoader();
             resultDiv.innerHTML = '<p class="notification success">未找到JS文件</p>';
             return;
           }
-          
+
           showLoader(`正在分析 ${jsFiles.length} 个JS文件...`);
           let completed = 0;
           const allResults = {};
-          
+
           // 分析每个JS文件
           jsFiles.forEach(url => {
             fetch(url)
@@ -471,19 +471,19 @@ document.addEventListener('DOMContentLoaded', () => {
       resultDiv.innerHTML = `<p class="notification success">未在JS文件中检测到敏感信息 ✅</p>`;
       return;
     }
-    
+
     let totalFindings = 0;
     Object.entries(allResults).forEach(([url, results]) => {
       const fileDiv = document.createElement('div');
       fileDiv.className = 'js-file';
-      
+
       // 统计此文件中的发现
       let fileFindings = 0;
       Object.values(results).forEach(matches => {
         fileFindings += matches ? matches.length : 0;
       });
       totalFindings += fileFindings;
-      
+
       const fileName = url.split('/').pop() || url;
       fileDiv.innerHTML = `
         <div class="file-header">
@@ -493,7 +493,7 @@ document.addEventListener('DOMContentLoaded', () => {
           </span>
         </div>
       `;
-      
+
       // 分析结果
       const tempDiv = document.createElement('div');
       displayResults(results, 'jsfile');
@@ -501,7 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
       fileDiv.appendChild(tempDiv.firstChild);
       resultDiv.appendChild(fileDiv);
     });
-    
+
     // 添加总计
     if (totalFindings > 0) {
       showNotification(`在JS文件中总共检测到 ${totalFindings} 个敏感信息`,
@@ -514,30 +514,30 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderDomainList() {
     const container = document.getElementById('domainListContainer');
     container.innerHTML = '';
-    
+
     const domains = settings.domainMode === 'include' ? 
       settings.includeDomains : settings.excludeDomains;
-    
+
     if (domains.length === 0) {
       container.innerHTML = '<p style="color: #6c757d; text-align: center;">暂无域名</p>';
       return;
     }
-    
+
     domains.forEach((domain, index) => {
       const domainItem = document.createElement('div');
       domainItem.style.display = 'flex';
       domainItem.style.alignItems = 'center';
       domainItem.style.padding = '5px 0';
       domainItem.style.borderBottom = '1px solid #eee';
-      
+
       domainItem.innerHTML = `
         <span style="flex: 1; padding-left: 5px;">${escapeHtml(domain)}</span>
         <button class="remove-domain" data-index="${index}" style="background: #e74c3c; color: white; border: none; border-radius: 3px; padding: 2px 6px; font-size: 11px; cursor: pointer;">移除</button>
       `;
-      
+
       container.appendChild(domainItem);
     });
-    
+
     // 添加移除按钮事件
     document.querySelectorAll('.remove-domain').forEach(btn => {
       btn.addEventListener('click', function() {
@@ -557,7 +557,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const domainMode = document.getElementById('domainMode').value;
     const domains = domainMode === 'include' ? 
       settings.includeDomains : settings.excludeDomains;
-    
+
     // 使用prompt简单实现，实际应用中可以用更好的输入方式
     const newDomain = prompt('请输入域名(例如: wiki.icbc.com 或 *.icbc.com):');
     if (newDomain && newDomain.trim() !== '') {
@@ -565,7 +565,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .replace(/^https?:\/\//, '')
         .replace(/\/.*$/, '')
         .replace(/^\*\.?/, '');
-        
+
       if (!domains.includes(cleanDomain) && cleanDomain !== '') {
         domains.push(cleanDomain);
         renderDomainList();
@@ -616,7 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
     settings.enableAutoBlock = document.getElementById('enableAutoBlock').checked;
     settings.enableContext = document.getElementById('enableContext').checked;
     settings.domainMode = document.getElementById('domainMode').value;
-    
+
     chrome.storage.sync.set(settings, () => {
       // 通知内容脚本更新设置
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -630,7 +630,7 @@ document.addEventListener('DOMContentLoaded', () => {
           });
         }
       });
-      
+
       // 更新标题显示
       updateAlertLevelUI(settings.alertLevel);
       showNotification('设置已保存', 'success');
